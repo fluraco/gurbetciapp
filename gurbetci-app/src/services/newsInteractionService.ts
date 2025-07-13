@@ -157,16 +157,32 @@ export class NewsInteractionService {
 
       console.log('Adding comment for user:', user.id);
 
-      // Kullanıcının user_profiles tablosunda profil bilgisi var mı kontrol et
-      // user_profiles.id = users.id (foreign key relationship)
-      const { data: userProfile, error: profileError } = await supabase
+      // user_profiles tablosunda user_id field'ı ile kontrol et
+      const { data: profileWithUserId, error: profileWithUserIdError } = await supabase
         .from('user_profiles')
-        .select('id, username, first_name, last_name, is_active')
-        .eq('id', user.id) // user_profiles.id = users.id
+        .select('user_id, username, first_name, last_name, is_active')
+        .eq('user_id', user.id) // user_id field'ı ile
         .single();
 
-      console.log('Profile check result:', userProfile);
-      console.log('Profile error:', profileError);
+      // user_profiles tablosunda id field'ı ile de kontrol et  
+      const { data: profileWithId, error: profileWithIdError } = await supabase
+        .from('user_profiles')
+        .select('id, username, first_name, last_name, is_active')
+        .eq('id', user.id) // id field'ı ile
+        .single();
+
+      console.log('=== PROFILE CHECK DEBUG ===');
+      console.log('Profile (user_id) error:', profileWithUserIdError);
+      console.log('Profile (id) error:', profileWithIdError);
+      console.log('Profile (user_id field):', profileWithUserId);
+      console.log('Profile (id field):', profileWithId);
+
+      // Hangi profile query başarılıysa onu kullan
+      const userProfile = profileWithUserId || profileWithId;
+      const profileError = profileWithUserId ? profileWithUserIdError : profileWithIdError;
+
+      console.log('Using profile:', userProfile);
+      console.log('Final profile error:', profileError);
 
       if (profileError) {
         console.error('Profile error:', profileError);
@@ -195,7 +211,7 @@ export class NewsInteractionService {
         .from('news_comments')
         .insert([{
           news_id: newsId,
-          user_id: user.id, // Bu users.id, user_profiles.id ile eşleşecek
+          user_id: user.id, // Bu users.id, user_profiles ile eşleşecek
           comment_text: commentText.trim()
         }]);
 
@@ -247,36 +263,48 @@ export class NewsInteractionService {
         .select('id, email, phone, created_at')
         .in('id', userIds);
 
-      // user_profiles tablosundan profil bilgilerini al
-      // user_profiles.id = users.id (foreign key relationship)
-      const { data: profiles, error: profilesError } = await supabase
+      // user_profiles tablosunda user_id field'ı ile eşleştirme deneyelim
+      const { data: profilesWithUserId, error: profilesWithUserIdError } = await supabase
+        .from('user_profiles')
+        .select('user_id, username, first_name, last_name, avatar_url, phone, email')
+        .in('user_id', userIds); // user_id field'ı ile
+
+      // user_profiles tablosunda id field'ı ile de deneyelim
+      const { data: profilesWithId, error: profilesWithIdError } = await supabase
         .from('user_profiles')
         .select('id, username, first_name, last_name, avatar_url, phone, email')
-        .in('id', userIds); // user_profiles.id = users.id
+        .in('id', userIds); // id field'ı ile
 
-      if (usersError) {
-        console.error('Users tablosu çekme hatası:', usersError);
-      }
-
-      if (profilesError) {
-        console.error('Profil çekme hatası:', profilesError);
-      }
-
+      console.log('=== DEBUG RESULTS ===');
+      console.log('Users error:', usersError);
+      console.log('Profiles (user_id) error:', profilesWithUserIdError);
+      console.log('Profiles (id) error:', profilesWithIdError);
       console.log('Fetched users:', users);
-      console.log('Fetched profiles:', profiles);
+      console.log('Fetched profiles (user_id field):', profilesWithUserId);
+      console.log('Fetched profiles (id field):', profilesWithId);
+
+      // Hangi profile query başarılıysa onu kullan
+      const profiles = profilesWithUserId && profilesWithUserId.length > 0 ? profilesWithUserId : profilesWithId;
+      const useUserIdField = profilesWithUserId && profilesWithUserId.length > 0;
+
+      console.log('Using profiles:', profiles);
+      console.log('Using user_id field:', useUserIdField);
 
       // Yorumları kullanıcı ve profil bilgileri ile birleştir
       const commentsWithProfiles = comments.map(comment => {
         // users.id = news_comments.user_id
         const user = users?.find(u => u.id === comment.user_id);
         
-        // user_profiles.id = users.id = news_comments.user_id
-        const profile = profiles?.find(p => p.id === comment.user_id);
+        // Profile eşleştirmesi - hangi field kullandığımıza göre
+        const profile = useUserIdField 
+          ? profiles?.find(p => p.user_id === comment.user_id)
+          : profiles?.find(p => p.id === comment.user_id);
         
         console.log(`\n--- Comment ${comment.id} ---`);
         console.log('User ID:', comment.user_id);
         console.log('Found user:', user);
         console.log('Found profile:', profile);
+        console.log('Profile matching field:', useUserIdField ? 'user_id' : 'id');
         
         // Kullanıcı profil bilgilerini oluştur
         const userProfile = {
