@@ -158,14 +158,25 @@ export class NewsInteractionService {
       // Kullanıcının user_profiles tablosunda profil bilgisi var mı kontrol et
       const { data: userProfile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('user_id, username, first_name, last_name, is_active')
-        .eq('user_id', user.id)
+        .select('id, username, first_name, last_name, is_active')
+        .eq('id', user.id) // user_id değil id kullanıyoruz
         .single();
 
-      if (profileError || !userProfile) {
+      console.log('Profile check for user:', user.id);
+      console.log('Found profile:', userProfile);
+
+      if (profileError) {
+        console.error('Profile error:', profileError);
         return { 
           success: false, 
           error: 'Yorum yapmak için önce profil bilgilerinizi tamamlamanız gerekiyor' 
+        };
+      }
+
+      if (!userProfile) {
+        return { 
+          success: false, 
+          error: 'Profil bulunamadı. Lütfen profil bilgilerinizi tamamlayın' 
         };
       }
 
@@ -221,13 +232,13 @@ export class NewsInteractionService {
         return [];
       }
 
-      // Kullanıcı bilgilerini sadece user_profiles tablosundan al
+      // Kullanıcı bilgilerini user_profiles tablosundan al - id field'ı ile
       const userIds = comments.map(comment => comment.user_id);
       
       const { data: profiles, error: profilesError } = await supabase
         .from('user_profiles')
-        .select('user_id, username, first_name, last_name, avatar_url, phone, email')
-        .in('user_id', userIds);
+        .select('id, username, first_name, last_name, avatar_url, phone, email')
+        .in('id', userIds); // user_id değil id kullanıyoruz
 
       if (profilesError) {
         console.error('Profil çekme hatası:', profilesError);
@@ -243,14 +254,21 @@ export class NewsInteractionService {
         console.error('Users tablosu çekme hatası:', usersError);
       }
 
+      console.log('Fetched profiles:', profiles);
+      console.log('Fetched users:', users);
+
       // Yorumları profil bilgileri ile birleştir
       const commentsWithProfiles = comments.map(comment => {
-        const profile = profiles?.find(p => p.user_id === comment.user_id);
+        const profile = profiles?.find(p => p.id === comment.user_id); // id ile match
         const user = users?.find(u => u.id === comment.user_id);
+        
+        console.log(`Comment ${comment.id} - User ID: ${comment.user_id}`);
+        console.log('Found profile:', profile);
+        console.log('Found user:', user);
         
         // user_profiles tablosundan gelen veriler + users'tan created_at
         const userProfile = {
-          user_id: profile?.user_id || comment.user_id,
+          user_id: comment.user_id,
           username: profile?.username || 'Kullanıcı',
           first_name: profile?.first_name || '',
           last_name: profile?.last_name || '',
@@ -266,10 +284,12 @@ export class NewsInteractionService {
         };
       });
 
-      console.log('Comments with user_profiles + users data:', commentsWithProfiles.map(c => ({
+      console.log('Final comments with profiles:', commentsWithProfiles.map(c => ({
         id: c.id,
         user_profile: {
           username: c.user_profile.username,
+          first_name: c.user_profile.first_name,
+          last_name: c.user_profile.last_name,
           created_at: c.user_profile.created_at
         }
       })));
