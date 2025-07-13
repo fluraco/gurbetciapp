@@ -19,10 +19,14 @@ export interface NewsComment {
   created_at: string;
   updated_at: string;
   user_profile?: {
+    user_id: string;
     username: string;
     first_name: string;
     last_name: string;
     avatar_url?: string;
+    phone?: string;
+    email?: string;
+    created_at: string; // users tablosundan katılma tarihi
   };
 }
 
@@ -222,23 +226,38 @@ export class NewsInteractionService {
       
       const { data: profiles, error: profilesError } = await supabase
         .from('user_profiles')
-        .select('user_id, username, first_name, last_name, avatar_url')
+        .select('user_id, username, first_name, last_name, avatar_url, phone, email')
         .in('user_id', userIds);
 
       if (profilesError) {
         console.error('Profil çekme hatası:', profilesError);
       }
 
+      // Users tablosundan created_at bilgisini al
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id, email, phone, created_at')
+        .in('id', userIds);
+
+      if (usersError) {
+        console.error('Users tablosu çekme hatası:', usersError);
+      }
+
       // Yorumları profil bilgileri ile birleştir
       const commentsWithProfiles = comments.map(comment => {
         const profile = profiles?.find(p => p.user_id === comment.user_id);
+        const user = users?.find(u => u.id === comment.user_id);
         
-        // user_profiles tablosundan gelen veriler
+        // user_profiles tablosundan gelen veriler + users'tan created_at
         const userProfile = {
+          user_id: profile?.user_id || comment.user_id,
           username: profile?.username || 'Kullanıcı',
           first_name: profile?.first_name || '',
           last_name: profile?.last_name || '',
-          avatar_url: profile?.avatar_url || null
+          avatar_url: profile?.avatar_url || null,
+          phone: profile?.phone || '',
+          email: profile?.email || '',
+          created_at: user?.created_at || '', // users tablosundan katılma tarihi
         };
 
         return {
@@ -247,9 +266,12 @@ export class NewsInteractionService {
         };
       });
 
-      console.log('Comments with user_profiles data:', commentsWithProfiles.map(c => ({
+      console.log('Comments with user_profiles + users data:', commentsWithProfiles.map(c => ({
         id: c.id,
-        user_profile: c.user_profile
+        user_profile: {
+          username: c.user_profile.username,
+          created_at: c.user_profile.created_at
+        }
       })));
 
       return commentsWithProfiles;

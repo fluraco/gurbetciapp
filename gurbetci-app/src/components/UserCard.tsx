@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 
 interface UserProfile {
-  id: string;
+  user_id?: string;
   username?: string;
   first_name?: string;
   last_name?: string;
@@ -29,8 +29,9 @@ interface UserProfile {
   company_field?: string;
   user_type?: 'individual' | 'corporate';
   profile_picture?: string;
+  avatar_url?: string;
   bio?: string;
-  created_at: string;
+  created_at: string; // users tablosundan gelen katılma tarihi
 }
 
 interface UserCardProps {
@@ -59,13 +60,40 @@ export default function UserCard({ visible, userProfile, onClose }: UserCardProp
     overlay: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.5)',
   };
 
-  const formatDate = (dateString: string) => {
+  const formatTimeAgo = (dateString: string) => {
+    if (!dateString) return 'Bilinmeyen tarih';
+    
     const date = new Date(dateString);
-    return date.toLocaleDateString('tr-TR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    
+    // Milisaniye cinsinden zaman farkları
+    const minute = 1000 * 60;
+    const hour = minute * 60;
+    const day = hour * 24;
+    const week = day * 7;
+    const month = day * 30;
+    const year = day * 365;
+
+    if (diffInMs < hour) {
+      const minutes = Math.floor(diffInMs / minute);
+      return `${minutes} dakika önce`;
+    } else if (diffInMs < day) {
+      const hours = Math.floor(diffInMs / hour);
+      return `${hours} saat önce`;
+    } else if (diffInMs < week) {
+      const days = Math.floor(diffInMs / day);
+      return `${days} gün önce`;
+    } else if (diffInMs < month) {
+      const weeks = Math.floor(diffInMs / week);
+      return `${weeks} hafta önce`;
+    } else if (diffInMs < year) {
+      const months = Math.floor(diffInMs / month);
+      return `${months} ay önce`;
+    } else {
+      const years = Math.floor(diffInMs / year);
+      return `${years} yıl önce`;
+    }
   };
 
   const getDisplayName = () => {
@@ -283,7 +311,7 @@ export default function UserCard({ visible, userProfile, onClose }: UserCardProp
               <View style={styles.detailItem}>
                 <Ionicons name="calendar-outline" size={18} color={colors.textLight} />
                 <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                  {formatDate(userProfile.created_at)} tarihinde katıldı
+                  {formatTimeAgo(userProfile.created_at)} katıldı
                 </Text>
               </View>
             </View>
