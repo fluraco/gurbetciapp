@@ -13,17 +13,28 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'npm'
-        cache-dependency-path: 'gurbetci-app/cron-package.json'
+        cache-dependency-path: gurbetci-app/cron-package.json
+
+    - name: Verify package.json exists
+      run: |
+        if [ ! -f "gurbetci-app/cron-package.json" ]; then
+          echo "Error: cron-package.json not found!"
+          exit 1
+        fi
+        echo "✓ cron-package.json found"
 
     - name: Install dependencies
       working-directory: gurbetci-app
-      run: npm install --production
+      run: |
+        npm ci --only=production --no-audit --no-fund
 
     - name: Run daily news update
       working-directory: gurbetci-app
