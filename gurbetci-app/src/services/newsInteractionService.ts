@@ -266,17 +266,44 @@ export class NewsInteractionService {
         console.log('Found profile:', profile);
         console.log('Found user:', user);
         
+        // Akıllı username belirleme
+        let finalUsername = 'Kullanıcı';
+        let finalFirstName = '';
+        let finalLastName = '';
+        
+        if (profile) {
+          finalFirstName = profile.first_name || '';
+          finalLastName = profile.last_name || '';
+          
+          // Username belirleme logic
+          if (profile.username && profile.username !== 'Kullanıcı' && profile.username.trim() !== '') {
+            finalUsername = profile.username;
+          } else if (user?.email) {
+            // Email'den username türet
+            const emailUsername = user.email.split('@')[0];
+            finalUsername = emailUsername;
+          } else {
+            finalUsername = 'Kullanıcı';
+          }
+        } else if (user?.email) {
+          // Profil yoksa email'den username türet
+          const emailUsername = user.email.split('@')[0];
+          finalUsername = emailUsername;
+        }
+        
         // user_profiles tablosundan gelen veriler + users'tan created_at
         const userProfile = {
           user_id: comment.user_id,
-          username: profile?.username || 'Kullanıcı',
-          first_name: profile?.first_name || '',
-          last_name: profile?.last_name || '',
+          username: finalUsername,
+          first_name: finalFirstName,
+          last_name: finalLastName,
           avatar_url: profile?.avatar_url || null,
           phone: profile?.phone || '',
-          email: profile?.email || '',
+          email: profile?.email || user?.email || '',
           created_at: user?.created_at || '', // users tablosundan katılma tarihi
         };
+
+        console.log('Final user profile:', userProfile);
 
         return {
           ...comment,
