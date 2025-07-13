@@ -21,15 +21,15 @@ jobs:
       with:
         node-version: '18'
         cache: 'npm'
-        cache-dependency-path: gurbetci-app/cron-package.json
+        cache-dependency-path: gurbetci-app/package.json
 
     - name: Verify package.json exists
       run: |
-        if [ ! -f "gurbetci-app/cron-package.json" ]; then
-          echo "Error: cron-package.json not found!"
+        if [ ! -f "gurbetci-app/package.json" ]; then
+          echo "Error: package.json not found!"
           exit 1
         fi
-        echo "✓ cron-package.json found"
+        echo "✓ package.json found"
 
     - name: Install dependencies
       working-directory: gurbetci-app
