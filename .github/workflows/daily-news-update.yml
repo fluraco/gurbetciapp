@@ -1,0 +1,38 @@
+name: Daily News Update
+
+on:
+  schedule:
+    # Her gün Türkiye saati 00:00'da çalış (UTC 21:00)
+    - cron: '0 21 * * *'
+  workflow_dispatch: # Manuel çalıştırma seçeneği
+
+jobs:
+  update-news:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: 'gurbetci-app/cron-package.json'
+
+    - name: Install dependencies
+      working-directory: gurbetci-app
+      run: npm install --production
+
+    - name: Run daily news update
+      working-directory: gurbetci-app
+      run: node cron-news-fetcher.js --run-now
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        NODE_ENV: production
+
+    - name: Log completion
+      run: echo "Daily news update completed at $(date)" 
