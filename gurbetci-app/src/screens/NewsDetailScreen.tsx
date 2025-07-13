@@ -279,25 +279,49 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
   };
 
   const renderComment = (comment: NewsComment) => {
-    // User display name logic - önce first_name + last_name, sonra username, son olarak Anonim
+    // user_profiles tablosundan gelen verilerle display name oluşturma
     const getDisplayName = () => {
-      if (comment.user_profile?.first_name && comment.user_profile?.last_name) {
-        return `${comment.user_profile.first_name} ${comment.user_profile.last_name}`;
+      const { first_name, last_name, username } = comment.user_profile || {};
+      
+      // Önce first_name + last_name kombinasyonu
+      if (first_name && last_name) {
+        return `${first_name} ${last_name}`;
       }
-      if (comment.user_profile?.username && comment.user_profile.username !== 'Anonim') {
-        return comment.user_profile.username;
+      
+      // Sadece first_name varsa
+      if (first_name) {
+        return first_name;
       }
-      return 'Anonim Kullanıcı';
+      
+      // Username varsa
+      if (username) {
+        return username;
+      }
+      
+      // Hiçbiri yoksa
+      return 'Kullanıcı';
     };
 
     const getInitials = () => {
-      if (comment.user_profile?.first_name && comment.user_profile?.last_name) {
-        return `${comment.user_profile.first_name[0]}${comment.user_profile.last_name[0]}`.toUpperCase();
+      const { first_name, last_name, username } = comment.user_profile || {};
+      
+      // first_name ve last_name varsa
+      if (first_name && last_name) {
+        return `${first_name[0]}${last_name[0]}`.toUpperCase();
       }
-      if (comment.user_profile?.username && comment.user_profile.username !== 'Anonim') {
-        return comment.user_profile.username[0].toUpperCase();
+      
+      // Sadece first_name varsa
+      if (first_name) {
+        return first_name[0].toUpperCase();
       }
-      return 'A';
+      
+      // Username varsa
+      if (username) {
+        return username[0].toUpperCase();
+      }
+      
+      // Hiçbiri yoksa
+      return 'K';
     };
 
     return (
