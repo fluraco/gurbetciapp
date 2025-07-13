@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,6 +47,7 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const commentInputRef = useRef<TextInput>(null);
   
@@ -55,6 +57,7 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { height: screenHeight } = Dimensions.get('window');
 
   // Premium siyah-beyaz renk paleti
   const colors = {
@@ -75,30 +78,40 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
   useEffect(() => {
     loadNewsDetail();
 
-    // Klavye event listeners
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
+    // Klavye event listeners - iOS ve Android için optimize edilmiş
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
-        // Klavye açıldığında yorum bölümüne scroll
+        setIsKeyboardVisible(true);
+        
+        // Klavye açıldığında yorum input'una scroll - daha akıllı scroll
         setTimeout(() => {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
+          if (commentInputRef.current) {
+            commentInputRef.current.measure((x, y, width, height, pageX, pageY) => {
+              const targetY = pageY + height - (screenHeight - e.endCoordinates.height) + 50;
+              if (targetY > 0) {
+                scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+              }
+            });
+          }
+        }, Platform.OS === 'ios' ? 100 : 300);
       }
     );
     
-    const keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardHeight(0);
+        setIsKeyboardVisible(false);
       }
     );
 
     return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
     };
-  }, [newsId]);
+  }, [newsId, screenHeight]);
 
   useEffect(() => {
     if (news) {
@@ -251,10 +264,8 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
   };
 
   const handleCommentInputFocus = () => {
-    // Input'a focus atıldığında klavye alanı için scroll
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    // Input'a focus atıldığında klavye için hazırlık
+    setIsKeyboardVisible(true);
   };
 
   const handleUserProfilePress = (userProfile: any) => {
@@ -267,42 +278,62 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
     setSelectedUserProfile(null);
   };
 
-  const renderComment = (comment: NewsComment) => (
-    <TouchableOpacity 
-      key={comment.id} 
-      style={[styles.commentItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
-      activeOpacity={0.7}
-      onPress={() => handleUserProfilePress(comment.user_profile)}
-    >
-      <View style={styles.commentHeader}>
-        <TouchableOpacity 
-          style={[styles.commentAvatar, { backgroundColor: colors.accent }]}
-          onPress={() => handleUserProfilePress(comment.user_profile)}
-        >
-          <Text style={[styles.commentAvatarText, { color: colors.accentText }]}>
-            {(comment.user_profile?.first_name?.[0] || comment.user_profile?.username?.[0] || 'U').toUpperCase()}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.commentInfo}
-          onPress={() => handleUserProfilePress(comment.user_profile)}
-        >
-          <Text style={[styles.commentAuthor, { color: colors.text }]}>
-            {comment.user_profile?.first_name && comment.user_profile?.last_name 
-              ? `${comment.user_profile.first_name} ${comment.user_profile.last_name}`
-              : comment.user_profile?.username || 'Anonim Kullanıcı'
-            }
-          </Text>
-          <Text style={[styles.commentDate, { color: colors.textLight }]}>
-            {formatTimeAgo(comment.created_at)}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={[styles.commentText, { color: colors.textSecondary }]}>
-        {comment.comment_text}
-      </Text>
-    </TouchableOpacity>
-  );
+  const renderComment = (comment: NewsComment) => {
+    // User display name logic - önce first_name + last_name, sonra username, son olarak Anonim
+    const getDisplayName = () => {
+      if (comment.user_profile?.first_name && comment.user_profile?.last_name) {
+        return `${comment.user_profile.first_name} ${comment.user_profile.last_name}`;
+      }
+      if (comment.user_profile?.username && comment.user_profile.username !== 'Anonim') {
+        return comment.user_profile.username;
+      }
+      return 'Anonim Kullanıcı';
+    };
+
+    const getInitials = () => {
+      if (comment.user_profile?.first_name && comment.user_profile?.last_name) {
+        return `${comment.user_profile.first_name[0]}${comment.user_profile.last_name[0]}`.toUpperCase();
+      }
+      if (comment.user_profile?.username && comment.user_profile.username !== 'Anonim') {
+        return comment.user_profile.username[0].toUpperCase();
+      }
+      return 'A';
+    };
+
+    return (
+      <TouchableOpacity 
+        key={comment.id} 
+        style={[styles.commentItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        activeOpacity={0.7}
+        onPress={() => handleUserProfilePress(comment.user_profile)}
+      >
+        <View style={styles.commentHeader}>
+          <TouchableOpacity 
+            style={[styles.commentAvatar, { backgroundColor: colors.accent }]}
+            onPress={() => handleUserProfilePress(comment.user_profile)}
+          >
+            <Text style={[styles.commentAvatarText, { color: colors.accentText }]}>
+              {getInitials()}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.commentInfo}
+            onPress={() => handleUserProfilePress(comment.user_profile)}
+          >
+            <Text style={[styles.commentAuthor, { color: colors.text }]}>
+              {getDisplayName()}
+            </Text>
+            <Text style={[styles.commentDate, { color: colors.textLight }]}>
+              {formatTimeAgo(comment.created_at)}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.commentText, { color: colors.textSecondary }]}>
+          {comment.comment_text}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -418,11 +449,20 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
         </View>
       </View>
 
-      <View style={styles.contentContainer}>
+      <KeyboardAvoidingView 
+        style={styles.contentContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
         <ScrollView 
           ref={scrollViewRef}
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 }]}
+          contentContainerStyle={[
+            styles.scrollContent, 
+            { 
+              paddingBottom: isKeyboardVisible ? keyboardHeight + 200 : 200
+            }
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -509,6 +549,33 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
                   </Text>
                 </View>
 
+                {/* Add Comment Section - Moved to the top */}
+                <View style={[styles.addCommentContainer, { borderColor: colors.border }]}>
+                  <TextInput
+                    ref={commentInputRef}
+                    style={[styles.commentInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                    placeholder="Yorumunuzu yazın..."
+                    placeholderTextColor={colors.textLight}
+                    value={newComment}
+                    onChangeText={setNewComment}
+                    multiline
+                    maxLength={1000}
+                    onFocus={handleCommentInputFocus}
+                    blurOnSubmit={false}
+                  />
+                  <TouchableOpacity
+                    style={[styles.submitCommentButton, { backgroundColor: colors.accent }]}
+                    onPress={handleAddComment}
+                    disabled={!newComment.trim() || submittingComment}
+                  >
+                    {submittingComment ? (
+                      <ActivityIndicator size="small" color={colors.accentText} />
+                    ) : (
+                      <Ionicons name="send" size={18} color={colors.accentText} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+
                 {/* Comments List */}
                 {commentsLoading ? (
                   <View style={styles.commentsLoading}>
@@ -539,41 +606,7 @@ export default function NewsDetailScreen({ navigation, route }: Props) {
             </>
           )}
         </ScrollView>
-
-        {/* Fixed Add Comment Section */}
-        <View style={[styles.fixedCommentSection, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-          >
-            <View style={[styles.addCommentContainer, { borderColor: colors.border }]}>
-              <TextInput
-                ref={commentInputRef}
-                style={[styles.commentInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-                placeholder="Yorumunuzu yazın..."
-                placeholderTextColor={colors.textLight}
-                value={newComment}
-                onChangeText={setNewComment}
-                multiline
-                maxLength={1000}
-                onFocus={handleCommentInputFocus}
-                blurOnSubmit={false}
-              />
-              <TouchableOpacity
-                style={[styles.submitCommentButton, { backgroundColor: colors.accent }]}
-                onPress={handleAddComment}
-                disabled={!newComment.trim() || submittingComment}
-              >
-                {submittingComment ? (
-                  <ActivityIndicator size="small" color={colors.accentText} />
-                ) : (
-                  <Ionicons name="send" size={18} color={colors.accentText} />
-                )}
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* UserCard Modal */}
       <UserCard
@@ -920,14 +953,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     marginLeft: 44,
-  },
-  fixedCommentSection: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderTopWidth: 1,
   },
 }); 

@@ -151,6 +151,42 @@ export class NewsInteractionService {
         return { success: false, error: 'Yorum 1-1000 karakter arasında olmalıdır' };
       }
 
+      // Kullanıcının profil bilgisi var mı kontrol et
+      const { data: existingProfile } = await supabase
+        .from('user_profiles')
+        .select('id, username, first_name, last_name')
+        .eq('user_id', user.id)
+        .single();
+
+      // Profil yoksa temel bir profil oluştur
+      if (!existingProfile) {
+        console.log('User profile not found, creating basic profile for user:', user.id);
+        
+        // Email'den username türet
+        const emailUsername = user.email ? user.email.split('@')[0] : `user${Date.now()}`;
+        
+        try {
+          await supabase
+            .from('user_profiles')
+            .insert({
+              user_id: user.id,
+              username: emailUsername,
+              first_name: '',
+              last_name: '',
+              user_type: 'individual',
+              country_code: 'PL',
+              city: '',
+              is_active: true
+            });
+          
+          console.log('Basic profile created for user:', user.id);
+        } catch (profileError) {
+          console.error('Error creating basic profile:', profileError);
+          // Profil oluşturulamazsa da yorum eklenebilsin
+        }
+      }
+
+      // Yorumu ekle
       const { error } = await supabase
         .from('news_comments')
         .insert([{
@@ -197,38 +233,61 @@ export class NewsInteractionService {
 
       // Kullanıcı bilgilerini ayrı olarak al
       const userIds = comments.map(comment => comment.user_id);
+      
+      // user_profiles tablosundan detaylı bilgi al
       const { data: profiles, error: profilesError } = await supabase
         .from('user_profiles')
         .select('user_id, username, first_name, last_name, avatar_url')
         .in('user_id', userIds);
 
-      if (profilesError) {
-        console.error('Profil çekme hatası:', profilesError);
-        // Profil hatası olursa yorumları profil bilgisi olmadan döndür
-        return comments.map(comment => ({
-          ...comment,
-          user_profile: {
-            username: 'Anonim',
-            first_name: '',
-            last_name: '',
-            avatar_url: null
-          }
-        }));
-      }
+      // Eğer user_profiles'tan veri gelmezse, users tablosundan email bilgisi al
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id, email')
+        .in('id', userIds);
 
-      // Yorumları profil bilgileri ile birleştir
+      // Profil verilerini yorumlarla birleştir
       const commentsWithProfiles = comments.map(comment => {
         const profile = profiles?.find(p => p.user_id === comment.user_id);
+        const user = users?.find(u => u.id === comment.user_id);
+        
+        // Akıllı profil bilgisi oluşturma
+        let userProfile = {
+          username: 'Anonim',
+          first_name: '',
+          last_name: '',
+          avatar_url: null
+        };
+
+        if (profile) {
+          // Profile bilgisi varsa kullan
+          userProfile = {
+            username: profile.username || 'Anonim',
+            first_name: profile.first_name || '',
+            last_name: profile.last_name || '',
+            avatar_url: profile.avatar_url
+          };
+          
+          // Eğer first_name ve last_name boşsa ama username varsa, username'i göster
+          if (!profile.first_name && !profile.last_name && profile.username && profile.username !== 'Anonim') {
+            userProfile.username = profile.username;
+          }
+        } else if (user && user.email) {
+          // Profile yoksa email'den kullanıcı adı türet
+          const emailUsername = user.email.split('@')[0];
+          userProfile.username = emailUsername;
+        }
+
         return {
           ...comment,
-          user_profile: profile || {
-            username: 'Anonim',
-            first_name: '',
-            last_name: '',
-            avatar_url: null
-          }
+          user_profile: userProfile
         };
       });
+
+      console.log('Comments with profiles prepared:', commentsWithProfiles.map(c => ({
+        id: c.id,
+        user_profile: c.user_profile
+      })));
 
       return commentsWithProfiles;
     } catch (error) {
