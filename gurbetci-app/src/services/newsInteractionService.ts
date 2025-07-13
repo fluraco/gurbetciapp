@@ -155,15 +155,18 @@ export class NewsInteractionService {
         return { success: false, error: 'Yorum 1-1000 karakter arasında olmalıdır' };
       }
 
+      console.log('Adding comment for user:', user.id);
+
       // Kullanıcının user_profiles tablosunda profil bilgisi var mı kontrol et
+      // user_profiles.id = users.id (foreign key relationship)
       const { data: userProfile, error: profileError } = await supabase
         .from('user_profiles')
         .select('id, username, first_name, last_name, is_active')
-        .eq('id', user.id) // user_id değil id kullanıyoruz
+        .eq('id', user.id) // user_profiles.id = users.id
         .single();
 
-      console.log('Profile check for user:', user.id);
-      console.log('Found profile:', userProfile);
+      console.log('Profile check result:', userProfile);
+      console.log('Profile error:', profileError);
 
       if (profileError) {
         console.error('Profile error:', profileError);
@@ -187,12 +190,12 @@ export class NewsInteractionService {
         };
       }
 
-      // Yorumu ekle
+      // Yorumu ekle - user.id news_comments.user_id olarak kaydedilecek
       const { error } = await supabase
         .from('news_comments')
         .insert([{
           news_id: newsId,
-          user_id: user.id,
+          user_id: user.id, // Bu users.id, user_profiles.id ile eşleşecek
           comment_text: commentText.trim()
         }]);
 
@@ -201,6 +204,7 @@ export class NewsInteractionService {
         return { success: false, error: 'Yorum eklenirken hata oluştu' };
       }
 
+      console.log('Comment added successfully for user:', user.id);
       return { success: true };
     } catch (error) {
       console.error('Yorum ekleme hatası:', error);
@@ -232,73 +236,56 @@ export class NewsInteractionService {
         return [];
       }
 
-      // Kullanıcı bilgilerini user_profiles tablosundan al - id field'ı ile
+      // Yorumlardaki user_id'leri al (bunlar users.id değerleri)
       const userIds = comments.map(comment => comment.user_id);
       
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('id, username, first_name, last_name, avatar_url, phone, email')
-        .in('id', userIds); // user_id değil id kullanıyoruz
+      console.log('User IDs to fetch:', userIds);
 
-      if (profilesError) {
-        console.error('Profil çekme hatası:', profilesError);
-      }
-
-      // Users tablosundan created_at bilgisini al
+      // users tablosundan temel bilgileri al
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select('id, email, phone, created_at')
         .in('id', userIds);
 
+      // user_profiles tablosundan profil bilgilerini al
+      // user_profiles.id = users.id (foreign key relationship)
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('id, username, first_name, last_name, avatar_url, phone, email')
+        .in('id', userIds); // user_profiles.id = users.id
+
       if (usersError) {
         console.error('Users tablosu çekme hatası:', usersError);
       }
 
-      console.log('Fetched profiles:', profiles);
-      console.log('Fetched users:', users);
+      if (profilesError) {
+        console.error('Profil çekme hatası:', profilesError);
+      }
 
-      // Yorumları profil bilgileri ile birleştir
+      console.log('Fetched users:', users);
+      console.log('Fetched profiles:', profiles);
+
+      // Yorumları kullanıcı ve profil bilgileri ile birleştir
       const commentsWithProfiles = comments.map(comment => {
-        const profile = profiles?.find(p => p.id === comment.user_id); // id ile match
+        // users.id = news_comments.user_id
         const user = users?.find(u => u.id === comment.user_id);
         
-        console.log(`Comment ${comment.id} - User ID: ${comment.user_id}`);
-        console.log('Found profile:', profile);
+        // user_profiles.id = users.id = news_comments.user_id
+        const profile = profiles?.find(p => p.id === comment.user_id);
+        
+        console.log(`\n--- Comment ${comment.id} ---`);
+        console.log('User ID:', comment.user_id);
         console.log('Found user:', user);
+        console.log('Found profile:', profile);
         
-        // Akıllı username belirleme
-        let finalUsername = 'Kullanıcı';
-        let finalFirstName = '';
-        let finalLastName = '';
-        
-        if (profile) {
-          finalFirstName = profile.first_name || '';
-          finalLastName = profile.last_name || '';
-          
-          // Username belirleme logic
-          if (profile.username && profile.username !== 'Kullanıcı' && profile.username.trim() !== '') {
-            finalUsername = profile.username;
-          } else if (user?.email) {
-            // Email'den username türet
-            const emailUsername = user.email.split('@')[0];
-            finalUsername = emailUsername;
-          } else {
-            finalUsername = 'Kullanıcı';
-          }
-        } else if (user?.email) {
-          // Profil yoksa email'den username türet
-          const emailUsername = user.email.split('@')[0];
-          finalUsername = emailUsername;
-        }
-        
-        // user_profiles tablosundan gelen veriler + users'tan created_at
+        // Kullanıcı profil bilgilerini oluştur
         const userProfile = {
           user_id: comment.user_id,
-          username: finalUsername,
-          first_name: finalFirstName,
-          last_name: finalLastName,
+          username: profile?.username || 'Kullanıcı',
+          first_name: profile?.first_name || '',
+          last_name: profile?.last_name || '',
           avatar_url: profile?.avatar_url || null,
-          phone: profile?.phone || '',
+          phone: profile?.phone || user?.phone || '',
           email: profile?.email || user?.email || '',
           created_at: user?.created_at || '', // users tablosundan katılma tarihi
         };
@@ -311,13 +298,14 @@ export class NewsInteractionService {
         };
       });
 
-      console.log('Final comments with profiles:', commentsWithProfiles.map(c => ({
+      console.log('\n=== Final Result ===');
+      console.log('Comments with profiles:', commentsWithProfiles.map(c => ({
         id: c.id,
+        user_id: c.user_id,
         user_profile: {
           username: c.user_profile.username,
           first_name: c.user_profile.first_name,
-          last_name: c.user_profile.last_name,
-          created_at: c.user_profile.created_at
+          last_name: c.user_profile.last_name
         }
       })));
 
